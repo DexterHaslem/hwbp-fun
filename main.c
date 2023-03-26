@@ -38,7 +38,6 @@ static bool setHwbpFn(void* pFn, const uint8_t bpNum, const DWORD threadId, uint
         (void*)(&context.Dr0)[bpNum] = pFn;
         /* https://en.wikipedia.org/wiki/X86_debug_register#DR7_-_Debug_control */
         uint64_t bt = (uint64_t)breakType;
-        /* set bp in bp#0 */
         context.Dr7 |= (bt << (16 * bpNum)); // condition
         context.Dr7 |= (0b11ULL << (18 * bpNum)); // len 4 bytes
         context.Dr7 |= (0b1ULL << (2 * bpNum)); // global enable in br
@@ -74,7 +73,7 @@ static bool clearHwBpFun(const uint8_t bpNum, const DWORD threadId)
 int main(int argc, char** argv)
 {
     const DWORD threadId = GetCurrentThreadId();
-    setHwbpFn(MessageBoxA, 1, threadId, BREAK_ON_DATA_RW);
+    setHwbpFn(MessageBox, 1, threadId, BREAK_ON_DATA_RW);
     
     HANDLE hThread = withThread(threadId);
     CONTEXT context = { .ContextFlags = CONTEXT_DEBUG_REGISTERS };
@@ -88,6 +87,12 @@ int main(int argc, char** argv)
         }
     }
 
+    /* when working, this should not display, as exception will be thrown (if not debug one above) 
+    windows will throw as single step exception */
+    MessageBox(NULL, TEXT("text"), TEXT("caption"), MB_OK);
     clearHwBpFun(1, threadId);
+
+    /* when ran outside of debugger this is not hit */
+    printf("done\r\n");
     return 0;
 }
