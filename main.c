@@ -121,6 +121,12 @@ LONG WINAPI exceptionHandler(PEXCEPTION_POINTERS pExInfo)
             //ExceptionInfo->ContextRecord->Rip
             if (hooks[i].addrHwbp == pExInfo->ContextRecord->Rip)
             {
+                const DWORD threadId = GetCurrentThreadId();
+                if (threadId != hooks[i].threadId)
+                {
+                    continue;
+                }
+
                 /* clear bp before executing handler in case it wants to call hooked */
                 clearHwBpFun(hooks[i].bpn, hooks[i].threadId);
 
