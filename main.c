@@ -75,6 +75,19 @@ int main(int argc, char** argv)
 {
     const DWORD threadId = GetCurrentThreadId();
     setHwbpFn(MessageBoxA, 1, threadId, BREAK_ON_DATA_RW);
+    
+    HANDLE hThread = withThread(threadId);
+    CONTEXT context = { .ContextFlags = CONTEXT_DEBUG_REGISTERS };
+    if (GetThreadContext(hThread, &context))
+    {
+        /* verify it was set, dr7 should be 0xf0404, bit 10 is reserved 1 */
+        printf("DR7=0x%08llx\r\n", context.Dr7);
+        if (context.Dr7 != 0xf0404)
+        {
+            DebugBreak();
+        }
+    }
+
     clearHwBpFun(1, threadId);
     return 0;
 }
