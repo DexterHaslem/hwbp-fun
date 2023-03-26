@@ -23,7 +23,7 @@ static HANDLE withThread(const DWORD threadId)
     return OpenThread(THREAD_ALL_ACCESS, FALSE, threadId);
 }
 
-static bool setHwbpFn(void* pFn, const uint8_t bpNum, const DWORD threadId, uint8_t breakType)
+static bool setHwbpFn(const DWORD64 pFn, const uint8_t bpNum, const DWORD threadId, uint8_t breakType)
 {
     bool ret = false;
     HANDLE hThread = withThread(threadId);
@@ -35,7 +35,7 @@ static bool setHwbpFn(void* pFn, const uint8_t bpNum, const DWORD threadId, uint
     CONTEXT context = { .ContextFlags = CONTEXT_DEBUG_REGISTERS	};
     if (GetThreadContext(hThread, &context))
     {
-        (void*)(&context.Dr0)[bpNum] = pFn;
+        (&context.Dr0)[bpNum] = pFn;
         /* https://en.wikipedia.org/wiki/X86_debug_register#DR7_-_Debug_control */
         uint64_t bt = (uint64_t)breakType;
         context.Dr7 |= (bt << (16 * bpNum)); // condition
@@ -70,10 +70,99 @@ static bool clearHwBpFun(const uint8_t bpNum, const DWORD threadId)
 }
 
 
+struct hook_info
+{
+    DWORD64 addrHwbp;
+    DWORD64 addrHandler; // debugging
+    void (*handler)(PEXCEPTION_POINTERS info);
+    DWORD threadId;
+    uint8_t bpn;
+};
+
+/* demonstrative */
+static struct hook_info hooks[3];
+static uint8_t hookcnt = 0;
+
+static void setHookFn(const DWORD64 pFn, const DWORD64 hook, const DWORD threadId, bool set)
+{
+    /* only 3 available w reserved */
+    if (set && hookcnt > 2)
+    {
+        return;
+    }
+
+    struct hook_info* pHook = &hooks[hookcnt];
+
+    if (set) 
+    {
+        pHook->addrHwbp = pFn;
+        pHook->handler = (void (*)(PEXCEPTION_POINTERS info))(hook);
+        pHook->addrHandler = hook;
+        pHook->threadId = threadId;
+        pHook->bpn = hookcnt + 1;
+        /* reserve hwbp 0 */
+        setHwbpFn(pHook->addrHwbp, pHook->bpn, pHook->threadId, BREAK_ON_DATA_RW);
+        ++hookcnt;
+    }
+    else if (hookcnt) 
+    {
+        clearHwBpFun(pHook->bpn, pHook->threadId);
+        --hookcnt;
+    }
+}
+
+LONG WINAPI exceptionHandler(PEXCEPTION_POINTERS pExInfo)
+{
+    if (pExInfo->ExceptionRecord->ExceptionCode == STATUS_SINGLE_STEP)
+    {
+        /* this was probably triggered by our hwbp, check our hooks*/
+        for (int i = 0; i < hookcnt; ++i)
+        {
+            //ExceptionInfo->ContextRecord->Rip
+            if (hooks[i].addrHwbp == pExInfo->ContextRecord->Rip)
+            {
+                /* clear bp before executing handler in case it wants to call hooked */
+                clearHwBpFun(hooks[i].bpn, hooks[i].threadId);
+
+                /* TODO: arg context would be nice but a pita. could dig out from pExInfo 
+                also what if we want to handle return value? could manually stuff eax */
+                hooks[i].handler(pExInfo);
+                //((void (*)())hooks[i].addrHandler)();
+
+                /* clear exp and re-enable hook now that we've ran our hook*/
+                pExInfo->ContextRecord->Rcx = 0;
+                pExInfo->ContextRecord->EFlags |= (1 << 16);
+
+                setHwbpFn(hooks[i].addrHwbp, hooks[i].bpn, hooks[i].threadId, BREAK_ON_DATA_RW);
+
+                /* let windows know we handled. TODO: maybe not always say we handled */
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static void myMessageBoxHook(PEXCEPTION_POINTERS pExInfo)
+{
+    printf("just ate a messagebox call, expAddr=%p #params=%lu\n",
+        pExInfo->ExceptionRecord->ExceptionAddress,
+        pExInfo->ExceptionRecord->NumberParameters);
+
+    MessageBox(NULL, TEXT("modified text"), TEXT("caption"), MB_OK);
+}
+
 int main(int argc, char** argv)
 {
+    HANDLE hExpHandler = AddVectoredExceptionHandler(1, exceptionHandler);
+    if (!hExpHandler)
+    {
+        return 1;
+    }
+
     const DWORD threadId = GetCurrentThreadId();
-    setHwbpFn(MessageBox, 1, threadId, BREAK_ON_DATA_RW);
+
+    setHookFn(MessageBox, myMessageBoxHook, threadId, true);
     
     HANDLE hThread = withThread(threadId);
     if (hThread && hThread != INVALID_HANDLE_VALUE)
@@ -94,10 +183,13 @@ int main(int argc, char** argv)
 
     /* when working, this should not display, as exception will be thrown (if not debug one above) 
     windows will throw as single step exception */
-    MessageBox(NULL, TEXT("text"), TEXT("caption"), MB_OK);
-    clearHwBpFun(1, threadId);
+    MessageBox(NULL, TEXT("orig text"), TEXT("caption"), MB_OK);
+    setHookFn(MessageBox, myMessageBoxHook, threadId, false);
+    //clearHwBpFun(1, threadId);
 
+    RemoveVectoredExceptionHandler(hExpHandler);
     /* when ran outside of debugger this is not hit */
     printf("done\r\n");
+
     return 0;
 }
