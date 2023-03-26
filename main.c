@@ -99,8 +99,8 @@ static void setHookFn(const DWORD64 pFn, const DWORD64 hook, const DWORD threadI
         pHook->handler = (void (*)(PEXCEPTION_POINTERS info))(hook);
         pHook->addrHandler = hook;
         pHook->threadId = threadId;
-        pHook->bpn = hookcnt + 1;
         /* reserve hwbp 0 */
+        pHook->bpn = hookcnt + 1;        
         setHwbpFn(pHook->addrHwbp, pHook->bpn, pHook->threadId, BREAK_ON_DATA_RW);
         ++hookcnt;
     }
@@ -165,7 +165,6 @@ int main(int argc, char** argv)
     }
 
     const DWORD threadId = GetCurrentThreadId();
-
     setHookFn(MessageBox, myMessageBoxHook, threadId, true);
     
     HANDLE hThread = withThread(threadId);
@@ -185,15 +184,11 @@ int main(int argc, char** argv)
         CloseHandle(hThread);
     }
 
-    /* when working, this should not display, as exception will be thrown (if not debug one above) 
-    windows will throw as single step exception */
     MessageBox(NULL, TEXT("orig text"), TEXT("caption"), MB_OK);
+
     setHookFn(MessageBox, myMessageBoxHook, threadId, false);
-    //clearHwBpFun(1, threadId);
 
     RemoveVectoredExceptionHandler(hExpHandler);
-    /* when ran outside of debugger this is not hit */
-    printf("done\r\n");
 
     return 0;
 }
