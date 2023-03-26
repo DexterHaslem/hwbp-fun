@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-//#define WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <tlhelp32.h>
 
@@ -23,7 +23,7 @@ static HANDLE withThread(const DWORD threadId)
     return OpenThread(THREAD_ALL_ACCESS, FALSE, threadId);
 }
 
-static bool setHwbpFn(const void* pFn, const uint8_t bpNum, const DWORD threadId, uint8_t breakType)
+static bool setHwbpFn(void* pFn, const uint8_t bpNum, const DWORD threadId, uint8_t breakType)
 {
     bool ret = false;
     HANDLE hThread = withThread(threadId);
@@ -49,7 +49,7 @@ static bool setHwbpFn(const void* pFn, const uint8_t bpNum, const DWORD threadId
     return true;
 }
 
-static void clearHwBpFun(const uint8_t bpNum, const DWORD threadId)
+static bool clearHwBpFun(const uint8_t bpNum, const DWORD threadId)
 {
     bool ret = false;
     HANDLE hThread = withThread(threadId);
