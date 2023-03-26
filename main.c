@@ -13,10 +13,24 @@
 #define BREAK_ON_IO_RW		 (0b10)
 #define BREAK_ON_DATA_RW	 (0b11)
 
+static HANDLE withThread(const DWORD threadId)
+{
+    if (threadId == GetCurrentThreadId())
+    {
+        return GetCurrentThread();
+    }
+
+    return OpenThread(THREAD_ALL_ACCESS, FALSE, threadId);
+}
+
 static bool setHwbpFn(const void* pfn, const uint8_t drNum, const DWORD threadId, uint8_t breakType)
 {
+    if (drNum == 0)
+    {
+        return false;
+    }
     bool ret = false;
-    HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadId);
+    HANDLE hThread = withThread(threadId);
     if (hThread == NULL || hThread == INVALID_HANDLE_VALUE)
     {
         return ret;
@@ -31,8 +45,8 @@ static bool setHwbpFn(const void* pfn, const uint8_t drNum, const DWORD threadId
         /* https://en.wikipedia.org/wiki/X86_debug_register#DR7_-_Debug_control */
         uint64_t bt = (uint64_t)breakType;
         /* set bp in bp#0 */
-        context.Dr7 &= ~(bt << (16 * drNum)); // condition
-        context.Dr7 &= ~(0b11ULL << (18 * drNum)); // len 4 bytes
+        context.Dr7 |= (bt << (16 * drNum)); // condition
+        context.Dr7 |= (0b11ULL << (18 * drNum)); // len 4 bytes
         context.Dr7 |= 0b1ULL; // local enable in br0
         ret = SetThreadContext(hThread, &context) != 0;
     }
@@ -43,8 +57,13 @@ static bool setHwbpFn(const void* pfn, const uint8_t drNum, const DWORD threadId
 
 static void clearHwBpFun(const uint8_t drNum, const DWORD threadId)
 {
+    if (drNum == 0)
+    {
+        return false;
+    }
+
     bool ret = false;
-    HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadId);
+    HANDLE hThread = withThread(threadId);
     if (hThread == NULL || hThread == INVALID_HANDLE_VALUE)
     {
         return ret;
@@ -64,8 +83,10 @@ static void clearHwBpFun(const uint8_t drNum, const DWORD threadId)
 }
 
 
-int main(int argc, char** argv) 
+int main(int argc, char** argv)
 {
-
+    const DWORD threadId = GetCurrentThreadId();
+    setHwbpFn(MessageBoxA, 1, threadId, BREAK_ON_DATA_RW);
+    clearHwBpFun(MessageBoxA, threadId);
     return 0;
 }
