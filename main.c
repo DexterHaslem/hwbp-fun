@@ -129,9 +129,9 @@ LONG WINAPI exceptionHandler(PEXCEPTION_POINTERS pExInfo)
                 hooks[i].handler(pExInfo);
                 //((void (*)())hooks[i].addrHandler)();
 
-                /* clear exp and re-enable hook now that we've ran our hook*/
-                pExInfo->ContextRecord->Rcx = 0;
+                /* clear exp and re-enable hook now that we've ran our hook*/                
                 pExInfo->ContextRecord->EFlags |= (1 << 16);
+                pExInfo->ContextRecord->Rcx = 0;
 
                 setHwbpFn(hooks[i].addrHwbp, hooks[i].bpn, hooks[i].threadId, BREAK_ON_DATA_RW);
 
@@ -145,11 +145,9 @@ LONG WINAPI exceptionHandler(PEXCEPTION_POINTERS pExInfo)
 
 static void myMessageBoxHook(PEXCEPTION_POINTERS pExInfo)
 {
-    printf("just ate a messagebox call, expAddr=%p #params=%lu\n",
+    printf("just hooked a messagebox call, expAddr=%p #params=%lu\n",
         pExInfo->ExceptionRecord->ExceptionAddress,
         pExInfo->ExceptionRecord->NumberParameters);
-
-    MessageBox(NULL, TEXT("modified text"), TEXT("caption"), MB_OK);
 }
 
 int main(int argc, char** argv)
