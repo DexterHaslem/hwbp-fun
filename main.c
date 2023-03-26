@@ -8,10 +8,10 @@
 #include <Windows.h>
 #include <tlhelp32.h>
 
-#define BREAK_ON_INSTR		 (0b00)
-#define BREAK_ON_DATA_WRITE  (0b01)
-#define BREAK_ON_IO_RW		 (0b10)
-#define BREAK_ON_DATA_RW	 (0b11)
+#define BREAK_ON_INSTR      (0b00)
+#define BREAK_ON_DATA_WRITE (0b01)
+#define BREAK_ON_IO_RW      (0b10)
+#define BREAK_ON_DATA_RW    (0b11)
 
 static HANDLE withThread(const DWORD threadId)
 {
@@ -76,15 +76,20 @@ int main(int argc, char** argv)
     setHwbpFn(MessageBox, 1, threadId, BREAK_ON_DATA_RW);
     
     HANDLE hThread = withThread(threadId);
-    CONTEXT context = { .ContextFlags = CONTEXT_DEBUG_REGISTERS };
-    if (GetThreadContext(hThread, &context))
+    if (hThread && hThread != INVALID_HANDLE_VALUE)
     {
-        /* verify it was set, dr7 should be 0xf0404, bit 10 is reserved 1 */
-        printf("DR7=0x%08llx\r\n", context.Dr7);
-        if (context.Dr7 != 0xf0404)
+        CONTEXT context = { .ContextFlags = CONTEXT_DEBUG_REGISTERS };
+        if (GetThreadContext(hThread, &context))
         {
-            DebugBreak();
+            /* verify it was set, dr7 should be 0xf0404, bit 10 is reserved 1 */
+            printf("DR7=0x%08llx\r\n", context.Dr7);
+            if (context.Dr7 != 0xf0404)
+            {
+                DebugBreak();
+            }
         }
+
+        CloseHandle(hThread);
     }
 
     /* when working, this should not display, as exception will be thrown (if not debug one above) 
